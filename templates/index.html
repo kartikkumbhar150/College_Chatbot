@@ -102,13 +102,15 @@
     const chatBox = document.getElementById("chat-box");
     const inputField = document.getElementById("user-input");
 
+    // 🟢 Maintain history in frontend
+    let chatHistory = [];
+
     function appendMessage(text, sender) {
       const msg = document.createElement("div");
       msg.classList.add("message", sender === "user" ? "user-message" : "bot-message");
 
       if (sender === "bot") {
-        // Markdown -> HTML convert
-        msg.innerHTML = marked.parse(text);
+        msg.innerHTML = marked.parse(text);  // Markdown to HTML
       } else {
         msg.textContent = text;
       }
@@ -118,40 +120,42 @@
     }
 
     async function sendMessage() {
-      const message = inputField.value.trim();
-      if (!message) return;
+  const message = inputField.value.trim();
+  if (!message) return;
 
-      appendMessage(message, "user");
-      inputField.value = "";
+  appendMessage(message, "user");
+  inputField.value = "";
 
-      // Show bot typing
-      const typingMsg = document.createElement("div");
-      typingMsg.classList.add("message", "bot-message");
-      typingMsg.textContent = "⏳ Thinking...";
-      chatBox.appendChild(typingMsg);
-      chatBox.scrollTop = chatBox.scrollHeight;
+  // Show bot typing
+  const typingMsg = document.createElement("div");
+  typingMsg.classList.add("message", "bot-message");
+  typingMsg.textContent = "⏳ Thinking...";
+  chatBox.appendChild(typingMsg);
+  chatBox.scrollTop = chatBox.scrollHeight;
 
-      try {
-        const response = await fetch("/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: message })
-        });
+  try {
+    const response = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message })   // ✅ fixed
+    });
 
-        const data = await response.json();
-        typingMsg.remove();
-        appendMessage(data.answer, "bot");
+    const data = await response.json();
+    typingMsg.remove();
 
-        // 🔊 Voice output
-        const utterance = new SpeechSynthesisUtterance(data.answer);
-        utterance.lang = "en-IN"; 
-        speechSynthesis.speak(utterance);
+    appendMessage(data.answer, "bot");
 
-      } catch (error) {
-        typingMsg.remove();
-        appendMessage("⚠️ Error: Could not connect to server.", "bot");
-      }
-    }
+    // 🔊 Voice output
+    const utterance = new SpeechSynthesisUtterance(data.answer);
+    utterance.lang = "en-IN"; 
+    speechSynthesis.speak(utterance);
+
+  } catch (error) {
+    typingMsg.remove();
+    appendMessage("⚠️ Error: Could not connect to server.", "bot");
+  }
+}
+
 
     // Press Enter to send
     inputField.addEventListener("keypress", function(event) {

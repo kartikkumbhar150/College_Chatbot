@@ -11,7 +11,23 @@ urls = [
     "https://engg.dypvp.edu.in/ugadmissions.aspx",
     "https://engg.dypvp.edu.in/from-the-desk-of-tpo.aspx",
     "https://engg.dypvp.edu.in/training-and-placement-team.aspx",
-    "https://engg.dypvp.edu.in/computer-engineering-laboratory.aspx"
+    "https://engg.dypvp.edu.in/computer-engineering-laboratory.aspx",
+    "https://engg.dypvp.edu.in/Information-Technology.aspx",
+    "https://engg.dypvp.edu.in/it-faculty-and-staff.aspx",
+    "https://engg.dypvp.edu.in/Infrastructure.aspx",
+    "https://engg.dypvp.edu.in/central-library.aspx",
+    "https://engg.dypvp.edu.in/researchIntroduction.aspx",
+    "https://engg.dypvp.edu.in/research-cell.aspx",
+    "https://engg.dypvp.edu.in/hostel.aspx",
+    "https://engg.dypvp.edu.in/DIT-EDSI-Cell.aspx",
+    "https://engg.dypvp.edu.in/Infrastructure.aspx",
+    "https://engg.dypvp.edu.in/computer-engineering-faculty-achievement.aspx",
+    "https://engg.dypvp.edu.in/computer-engineering-faculty-and-staff.aspx",
+    "https://engg.dypvp.edu.in/computer-engineering-student-achievements.aspx",
+    "https://engg.dypvp.edu.in/Innovation-and-Best-Practices.aspx",
+    "https://engg.dypvp.edu.in/Comp-Engg-HOD.aspx",
+    "https://engg.dypvp.edu.in/placements.aspx",
+    "https://engg.dypvp.edu.in/programs-outcomes.aspx"
 ]
 
 def clean_text(text):
