@@ -1,5 +1,9 @@
-.env
-chunks.pkl
-college_data.txt
-college_index.faiss
-chat_history.db
+# Ignore environment variables
+backend/.env
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore data files
+backend/data/

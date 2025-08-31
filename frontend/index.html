@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>DIT — College Voice Assistant</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app" role="application">
+    <header>
+      <h1>🎓 College Voice Assistant</h1>
+      <div id="status" aria-live="polite">Tap Start and say “hello” to wake</div>
+    </header>
+
+    <main>
+      <div id="transcript" class="panel" aria-live="polite">Transcript will appear here...</div>
+      <div id="conversation" class="panel" aria-live="polite"></div>
+    </main>
+
+    <footer>
+      <button id="toggle-listen" aria-pressed="false" aria-label="Toggle listening">Start</button>
+      <div class="input-area">
+        <input id="text-input" type="text" placeholder="Type your question..." autocomplete="off" />
+        <button id="send-btn" aria-label="Send message">Send</button>
+      </div>
+      <small>
+        Wake: <b>hello</b>. Interrupt anytime by saying <b>stop</b>, <b>okay stop</b>, or <b>wait</b>.
+      </small>
+    </footer>
+  </div>
+
+  <!-- Markdown renderer -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Sanitize rendered HTML -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
