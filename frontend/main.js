@@ -1,5 +1,4 @@
 // ========== Config ==========
-// ========== Config ==========
 const apiBase = "/";
 let listening = false;
 const statusEl = document.getElementById("status");
@@ -15,8 +14,6 @@ let finalTranscript = "";
 let awake = false;
 let ttsInterrupted = false;
 let stopRequested = false;
-
-// ... [keep everything you pasted: containsWake, stopSpeaking, SR setup, handleFinalSpeech, sendQuery, appendConversation, speak, handleBotResponse, listen toggle, text input] ...
 
 
 // ========== Wake / Stop Detection ==========

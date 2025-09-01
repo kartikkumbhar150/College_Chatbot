@@ -6,4 +6,8 @@ __pycache__/
 *.pyc
 
 # Ignore data files
-backend/data/
+backend/data/college.txt
+backend/data/docs_chunks.json
+backend/data/faiss_index.bin
+backend/data/faiss_meta.pkl
+backend/data/mht_cet_cutoff.xlsx

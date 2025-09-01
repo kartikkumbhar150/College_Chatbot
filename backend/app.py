@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# ✅ local imports
+# local imports
 from embeddings_indexer import read_source_files, preprocess, chunk_text_with_sections  # noqa: F401
 from embeddings_indexer import load_index_and_meta  # 🔹 shared loader
 from groq_client import groq_generate
@@ -36,7 +36,7 @@ try:
     faiss_index, metadata, embed_model = load_index_and_meta()
     print(f"✅ FAISS index loaded with {len(metadata)} entries")
 except Exception as e:
-    raise RuntimeError(f"❌ Failed to load FAISS index: {e}")
+    raise RuntimeError(f"Failed to load FAISS index: {e}")
 
 # ============ JSON serialization helper ============
 def to_serializable(obj):
@@ -57,7 +57,7 @@ def to_serializable(obj):
 def retrieve(query: str, top_k: int = 6):
     """Retrieve top_k most relevant chunks from FAISS index."""
     try:
-        # ✅ ensure shape (1, dim)
+        # ensure shape (1, dim)
         q_emb = embed_model.encode([query], convert_to_numpy=True).astype("float32")
         faiss.normalize_L2(q_emb)
         D, I = faiss_index.search(q_emb, top_k)
@@ -120,7 +120,7 @@ def api_query():
     if not q:
         return jsonify({"error": "No query provided"}), 400
 
-    # 🔹 Special commands
+    #  Special commands
     q_lower = q.lower()
     if q_lower in {"stop", "exit", "okay stop", "ok stop", "wait"}:
         return jsonify({
@@ -132,12 +132,12 @@ def api_query():
     if q_lower in {"clear", "clear history", "reset"}:
         HISTORY[session_id] = []
         return jsonify({
-            "answer": "✅ History cleared.",
+            "answer": "History cleared.",
             "retrieved": [],
             "history": []
         })
 
-    # 🔹 Retrieval
+    #  Retrieval
     try:
         retrieved = retrieve(q, top_k=6)
     except Exception as e:
@@ -147,7 +147,7 @@ def api_query():
     hist = HISTORY.get(session_id, [])
     system, user_prompt = build_prompt(q, retrieved, hist)
 
-    # 🔹 Call Groq
+    #  Call Groq
     try:
         logger.info("Calling Groq for session=%s question='%s'", session_id, q[:80])
         answer = groq_generate(system, user_prompt, max_tokens=800, temperature=0.1)
@@ -156,7 +156,7 @@ def api_query():
         logger.error("Groq API error: %s", e)
         return jsonify({"error": "Groq API error", "detail": str(e), "trace": tb}), 502
 
-    # 🔹 Update history
+    #  Update history
     hist.append({"q": q, "a": answer})
     HISTORY[session_id] = hist[-10:]
 
@@ -197,5 +197,5 @@ if __name__ == "__main__":
     host = os.getenv("FLASK_HOST", "0.0.0.0")
     port = int(os.getenv("FLASK_PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    print(f"🚀 Running Flask server on http://{host}:{port}")
+    print(f"Running Flask server on http://{host}:{port}")
     app.run(host=host, port=port, debug=debug)

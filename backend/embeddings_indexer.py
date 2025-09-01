@@ -127,10 +127,10 @@ def chunk_text_with_sections(text: str,
 # ---- Index build / load / search ----
 def build_index(embedding_model_name: str = EMBED_MODEL_NAME,
                 use_qa_model: bool = False):
-    print("📂 Reading source files...")
+    print("Reading source files...")
     sources = read_source_files()
 
-    print("📝 Preprocessing and chunking...")
+    print("Preprocessing and chunking...")
     all_chunks = []
     for s in sources:
         text = preprocess(s["text"])
@@ -139,12 +139,12 @@ def build_index(embedding_model_name: str = EMBED_MODEL_NAME,
     if not all_chunks:
         raise RuntimeError("No chunks produced. Check your data and chunking settings.")
 
-    print(f"✅ Total chunks: {len(all_chunks)}")
+    print(f"Total chunks: {len(all_chunks)}")
 
     model_name = QA_EMBED_MODEL_NAME if use_qa_model else embedding_model_name
-    print(f"🔍 Loading embedding model: {model_name}")
+    print(f"Loading embedding model: {model_name}")
     embedder = SentenceTransformer(model_name)
-    print(f"➡️ Embedding dim: {embedder.get_sentence_embedding_dimension()}")
+    print(f"Embedding dim: {embedder.get_sentence_embedding_dimension()}")
 
     embeddings = []
     texts = [c["text"] for c in all_chunks]
@@ -158,7 +158,7 @@ def build_index(embedding_model_name: str = EMBED_MODEL_NAME,
     faiss.normalize_L2(arr)
 
     dim = arr.shape[1]
-    print(f"📐 Creating FAISS index (dim={dim}, M={HNSW_M})")
+    print(f"Creating FAISS index (dim={dim}, M={HNSW_M})")
     index = faiss.IndexHNSWFlat(dim, HNSW_M, faiss.METRIC_INNER_PRODUCT)
     index.hnsw.efConstruction = EF_CONSTRUCTION
     index.hnsw.efSearch = EF_SEARCH
@@ -167,14 +167,14 @@ def build_index(embedding_model_name: str = EMBED_MODEL_NAME,
     ids = np.arange(len(all_chunks)).astype("int64")
     index_id_map.add_with_ids(arr, ids)
 
-    print("💾 Saving index + metadata...")
+    print("Saving index + metadata...")
     faiss.write_index(index_id_map, FAISS_INDEX_FILE)
     with open(FAISS_META_FILE, "wb") as f:
         pickle.dump(all_chunks, f)
     with open(CHUNKS_FILE, "w", encoding="utf-8") as f:
         json.dump(all_chunks, f, ensure_ascii=False, indent=2)
 
-    print("✅ Index build complete.")
+    print("Index build complete.")
 
 
 def load_index_and_meta(embed_model_name: str = EMBED_MODEL_NAME,
@@ -183,7 +183,7 @@ def load_index_and_meta(embed_model_name: str = EMBED_MODEL_NAME,
     if not os.path.exists(index_path) or not os.path.exists(meta_path):
         raise FileNotFoundError("Index or metadata not found. Run with --build first.")
 
-    print("📂 Loading FAISS index + metadata...")
+    print("Loading FAISS index + metadata...")
     index = faiss.read_index(index_path)
     with open(meta_path, "rb") as f:
         meta = pickle.load(f)
@@ -191,11 +191,11 @@ def load_index_and_meta(embed_model_name: str = EMBED_MODEL_NAME,
     embedder = SentenceTransformer(embed_model_name)
     model_dim = embedder.get_sentence_embedding_dimension()
     index_dim = index.d
-    print(f"🔎 Model dim={model_dim}, Index dim={index_dim}")
+    print(f"Model dim={model_dim}, Index dim={index_dim}")
 
     if model_dim != index_dim:
         raise ValueError(
-            f"❌ Dimension mismatch! Model={model_dim}, Index={index_dim}. "
+            f"Dimension mismatch! Model={model_dim}, Index={index_dim}. "
             f"Rebuild the index with this model."
         )
 
@@ -224,7 +224,7 @@ def search(query: str,
                 c["rerank_score"] = float(new_sc)
             candidates = sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)
         except Exception as e:
-            print(f"⚠️ Cross-encoder rerank failed: {e}")
+            print(f"Cross-encoder rerank failed: {e}")
 
     return candidates
 
