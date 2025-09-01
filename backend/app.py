@@ -2,16 +2,16 @@ import os
 import pickle
 import faiss
 import numpy as np
+import traceback
+import logging
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
-import tempfile
-from groq import Groq
 
 # ✅ local imports
-from embeddings_indexer import read_source_files, preprocess, chunk_text_with_sections
+from embeddings_indexer import read_source_files, preprocess, chunk_text_with_sections  # noqa: F401
+from embeddings_indexer import load_index_and_meta  # 🔹 shared loader
 from groq_client import groq_generate
 
 # ============ Setup ============
@@ -21,21 +21,22 @@ BASE = Path(__file__).resolve().parent
 DATA_DIR = BASE / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-FAISS_INDEX_FILE = DATA_DIR / "faiss_index.bin"
-FAISS_META_FILE = DATA_DIR / "faiss_meta.pkl"
-
-EMBED_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
 app = Flask(__name__, static_folder="../frontend", static_url_path="/")
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # In-memory conversation history {session_id: [{q, a}, ...]}
-HISTORY = {}
+HISTORY: dict[str, list[dict]] = {}
 
-# Groq client
-client = Groq(api_key=GROQ_API_KEY)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+# ============ Load FAISS + Embedder ============
+try:
+    faiss_index, metadata, embed_model = load_index_and_meta()
+    print(f"✅ FAISS index loaded with {len(metadata)} entries")
+except Exception as e:
+    raise RuntimeError(f"❌ Failed to load FAISS index: {e}")
 
 # ============ JSON serialization helper ============
 def to_serializable(obj):
@@ -52,41 +53,28 @@ def to_serializable(obj):
         return [to_serializable(v) for v in obj]
     return obj
 
-
-# ============ Load FAISS Index ============
-if FAISS_INDEX_FILE.exists() and FAISS_META_FILE.exists():
-    try:
-        faiss_index = faiss.read_index(str(FAISS_INDEX_FILE))
-        with open(FAISS_META_FILE, "rb") as f:
-            metadata = pickle.load(f)
-        dim = faiss_index.d
-        embed_model = SentenceTransformer(EMBED_MODEL_NAME)
-        print(f"✅ FAISS index loaded with {len(metadata)} entries, dim={dim}")
-    except Exception as e:
-        raise RuntimeError(f"❌ Failed to load FAISS index/metadata: {e}")
-else:
-    raise RuntimeError("❌ FAISS index or metadata not found. Run `embeddings_indexer.py` first.")
-
-
 # ============ Retrieval ============
-def retrieve(query: str, top_k: int = 4):
+def retrieve(query: str, top_k: int = 6):
     """Retrieve top_k most relevant chunks from FAISS index."""
-    q_emb = embed_model.encode(query, normalize_embeddings=True)
-    q_emb = np.array([q_emb]).astype("float32")
+    try:
+        # ✅ ensure shape (1, dim)
+        q_emb = embed_model.encode([query], convert_to_numpy=True).astype("float32")
+        faiss.normalize_L2(q_emb)
+        D, I = faiss_index.search(q_emb, top_k)
+    except Exception as e:
+        raise RuntimeError(f"Retrieval error: {e}")
 
-    D, I = faiss_index.search(q_emb, top_k)
     results = []
     for idx, score in zip(I[0], D[0]):
         if idx < 0:
             continue
         meta = metadata[idx]
         results.append({
-            "id": meta.get("id", int(idx)),
+            "id": int(meta.get("id", int(idx))),
             "text": meta["text"],
             "score": float(score)
         })
     return results
-
 
 # ============ Prompt Builder ============
 def build_prompt(question, retrieved_docs, history):
@@ -122,7 +110,6 @@ def build_prompt(question, retrieved_docs, history):
     )
     return system, user_prompt
 
-
 # ============ API Routes ============
 @app.route("/api/query", methods=["POST"])
 def api_query():
@@ -135,14 +122,14 @@ def api_query():
 
     # 🔹 Special commands
     q_lower = q.lower()
-    if q_lower in ("stop", "exit", "okay stop", "ok stop", "wait"):
+    if q_lower in {"stop", "exit", "okay stop", "ok stop", "wait"}:
         return jsonify({
             "answer": "[stopped]",
             "retrieved": [],
             "history": HISTORY.get(session_id, [])
         })
 
-    if q_lower in ("clear", "clear history", "reset"):
+    if q_lower in {"clear", "clear history", "reset"}:
         HISTORY[session_id] = []
         return jsonify({
             "answer": "✅ History cleared.",
@@ -154,15 +141,20 @@ def api_query():
     try:
         retrieved = retrieve(q, top_k=6)
     except Exception as e:
+        logger.exception("Retrieval failed: %s", e)
         return jsonify({"error": f"Retrieval failed: {str(e)}"}), 500
 
     hist = HISTORY.get(session_id, [])
     system, user_prompt = build_prompt(q, retrieved, hist)
 
+    # 🔹 Call Groq
     try:
+        logger.info("Calling Groq for session=%s question='%s'", session_id, q[:80])
         answer = groq_generate(system, user_prompt, max_tokens=800, temperature=0.1)
     except Exception as e:
-        return jsonify({"error": f"Groq API error: {str(e)}"}), 500
+        tb = traceback.format_exc()
+        logger.error("Groq API error: %s", e)
+        return jsonify({"error": "Groq API error", "detail": str(e), "trace": tb}), 502
 
     # 🔹 Update history
     hist.append({"q": q, "a": answer})
@@ -174,12 +166,10 @@ def api_query():
         "history": HISTORY[session_id]
     })
 
-
 @app.route("/api/history", methods=["GET"])
 def api_history():
     session_id = request.args.get("session_id", "default")
     return jsonify(to_serializable(HISTORY.get(session_id, [])))
-
 
 @app.route("/api/scrape", methods=["POST"])
 def api_scrape():
@@ -191,18 +181,16 @@ def api_scrape():
             f.write(text)
         return jsonify({"status": "scraped", "chars": len(text)})
     except Exception as e:
+        logger.exception("Scraping failed: %s", e)
         return jsonify({"error": f"Scraping failed: {str(e)}"}), 500
-
 
 @app.route("/")
 def frontend_index():
     return send_from_directory(app.static_folder, "index.html")
 
-
 @app.route("/<path:path>")
 def static_proxy(path):
     return send_from_directory(app.static_folder, path)
-
 
 # ============ Main ============
 if __name__ == "__main__":

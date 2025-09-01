@@ -20,10 +20,19 @@
 
     <footer>
       <button id="toggle-listen" aria-pressed="false" aria-label="Toggle listening">Start</button>
+
+      <!-- Single input area (fixed duplicate IDs) -->
       <div class="input-area">
+        <select id="lang-select" aria-label="Speech language">
+          <option value="en-IN" selected>English (India)</option>
+          <option value="hi-IN">हिंदी</option>
+          <option value="mr-IN">मराठी</option>
+        </select>
+
         <input id="text-input" type="text" placeholder="Type your question..." autocomplete="off" />
         <button id="send-btn" aria-label="Send message">Send</button>
       </div>
+
       <small>
         Wake: <b>hello</b>. Interrupt anytime by saying <b>stop</b>, <b>okay stop</b>, or <b>wait</b>.
       </small>

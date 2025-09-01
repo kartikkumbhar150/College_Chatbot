@@ -1,4 +1,5 @@
 // ========== Config ==========
+// ========== Config ==========
 const apiBase = "/";
 let listening = false;
 const statusEl = document.getElementById("status");
@@ -7,12 +8,16 @@ const convEl = document.getElementById("conversation");
 const btn = document.getElementById("toggle-listen");
 const textInput = document.getElementById("text-input");
 const sendBtn = document.getElementById("send-btn");
+const langSelect = document.getElementById("lang-select");
 const sessionId = "session-" + Math.random().toString(36).slice(2, 9);
 
 let finalTranscript = "";
 let awake = false;
 let ttsInterrupted = false;
 let stopRequested = false;
+
+// ... [keep everything you pasted: containsWake, stopSpeaking, SR setup, handleFinalSpeech, sendQuery, appendConversation, speak, handleBotResponse, listen toggle, text input] ...
+
 
 // ========== Wake / Stop Detection ==========
 function containsWake(text) {
@@ -38,7 +43,7 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
   recognition = new SR();
   recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.lang = "en-IN";
+  recognition.lang = langSelect?.value || "en-IN";
 
   recognition.onstart = () => {
     statusEl.textContent = "🎤 Listening... Say 'hello' to wake.";
@@ -68,6 +73,15 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
   };
 } else {
   statusEl.textContent = "❌ Speech Recognition not supported.";
+}
+
+// Update SR language when user changes it
+if (langSelect) {
+  langSelect.addEventListener("change", () => {
+    if (recognition) {
+      recognition.lang = langSelect.value;
+    }
+  });
 }
 
 // ========== Handle Speech ==========
@@ -100,8 +114,17 @@ async function sendQuery(q) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ q, session_id: sessionId }),
   });
-  if (!res.ok) throw new Error("Server returned " + res.status);
-  return res.json();
+  const text = await res.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = { error: text || `Server returned ${res.status}` };
+  }
+  if (!res.ok) {
+    throw new Error(body.detail || body.error || `Server returned ${res.status}`);
+  }
+  return body;
 }
 
 // ========== Conversation UI ==========
@@ -135,11 +158,10 @@ function speak(text) {
   if (!text) return;
   if (containsStop(text)) return;
 
-  // Strip Markdown symbols (#, -, *, numbers.)
   let cleanText = text
-    .replace(/#+\s*/g, "")      // remove ## headings
-    .replace(/[-*]\s+/g, "")    // remove bullet symbols
-    .replace(/^\d+\.\s+/gm, ""); // remove numbered list markers
+    .replace(/#+\s*/g, "")
+    .replace(/[-*]\s+/g, "")
+    .replace(/^\d+\.\s+/gm, "");
 
   window.speechSynthesis.cancel();
   ttsInterrupted = false;
@@ -154,7 +176,7 @@ function speak(text) {
       (v) => /india|en-in|hindi/i.test(v.name) || /en-?in/i.test(v.lang)
     );
     if (prefer) u.voice = prefer;
-    u.lang = "en-IN";
+    u.lang = langSelect?.value || "en-IN";
 
     u.onstart = () =>
       (statusEl.textContent = "🔊 Speaking... (still listening)");
@@ -197,7 +219,7 @@ function handleBotResponse(promise) {
       typing.remove();
       if (!stopRequested) {
         console.error(err);
-        statusEl.textContent = "❌ Error contacting backend.";
+        statusEl.textContent = "❌ Error contacting backend: " + err.message;
       }
     });
 }
