@@ -87,12 +87,14 @@ def build_prompt(question, retrieved_docs, history):
         "- Use bullet points with - (hyphen).\n"
         "- Use numbered lists with 1., 2., 3.\n"
         "- Keep one blank line between sections.\n"
-        "- End with a **Summary** section.\n\n"
+        "- End with a **Summary** section if applicable.\n\n"
         "Content Rules:\n"
         "- Always explicitly write 'Dr. D. Y. Patil Institute of Technology'.\n"
         "- Never replace the college name with 'the college' or 'the institute'.\n"
         "- Integrate prior conversation naturally if referenced.\n"
-        "- If the question is unrelated to the college, politely decline.\n"
+        "- If the question is unrelated to Dr. D. Y. Patil Institute of Technology, politely decline.\n"
+        "- Give precise, smart, and accurate answers.\n"
+        "- Only answer what is asked, nothing extra.\n"
     )
 
     hist_text = ""
