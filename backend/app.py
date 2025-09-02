@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # ============ Load FAISS + Embedder ============
 try:
     faiss_index, metadata, embed_model = load_index_and_meta()
-    print(f"✅ FAISS index loaded with {len(metadata)} entries")
+    print(f"FAISS index loaded with {len(metadata)} entries")
 except Exception as e:
     raise RuntimeError(f"Failed to load FAISS index: {e}")
 
@@ -80,37 +80,30 @@ def retrieve(query: str, top_k: int = 6):
 def build_prompt(question, retrieved_docs, history):
     system = (
         "You are an expert assistant for Dr. D. Y. Patil Institute of Technology.\n\n"
-        "Formatting Rules:\n"
-        "- Use Markdown formatting.\n"
-        "- Headings must use ## (example: ## Placement Records).\n"
-        "- Subheadings use ### (example: ### Training and Placement Team).\n"
-        "- Use bullet points with - (hyphen).\n"
-        "- Use numbered lists with 1., 2., 3.\n"
-        "- Keep one blank line between sections.\n"
-        "- End with a **Summary** section if applicable.\n\n"
-        "Content Rules:\n"
-        "- Always explicitly write 'Dr. D. Y. Patil Institute of Technology'.\n"
-        "- Never replace the college name with 'the college' or 'the institute'.\n"
-        "- Integrate prior conversation naturally if referenced.\n"
-        "- If the question is unrelated to Dr. D. Y. Patil Institute of Technology, politely decline.\n"
-        "- Give precise, smart, and accurate answers.\n"
-        "- Only answer what is asked, nothing extra.\n"
+        "Answering Rules:\n"
+        "- Always provide the most precise and concise answer possible.\n"
+        "- Do NOT add extra details, explanations, formatting, or summaries unless explicitly asked.\n"
+        "- If the question is factual (e.g., 'What is the highest package?'), respond with ONLY the fact (e.g., '44 LPA').\n"
+        "- If the answer is not found in the retrieved documents, politely say you don’t know.\n"
+        "- Never replace 'Dr. D. Y. Patil Institute of Technology' with 'the college' or 'the institute'.\n"
+        "- Ignore unrelated questions.\n"
     )
 
     hist_text = ""
     if history:
-        for h in history[-5:]:
+        for h in history[-3:]:  # keep only last 3 for context
             hist_text += f"Q: {h.get('q')}\nA: {h.get('a')}\n"
 
-    sources_text = "\n\n---\n\n".join([d['text'] for d in retrieved_docs])
+    sources_text = "\n\n".join([d['text'] for d in retrieved_docs])
 
     user_prompt = (
         f"{hist_text}\n\n"
         f"Question: {question}\n\n"
         f"Context documents:\n{sources_text}\n\n"
-        "Answer in the exact required structure, using Markdown formatting."
+        "Give the shortest and most precise answer possible."
     )
     return system, user_prompt
+
 
 # ============ API Routes ============
 @app.route("/api/query", methods=["POST"])
