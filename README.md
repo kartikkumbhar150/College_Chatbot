@@ -13,7 +13,11 @@ Step 3 : create a folder named data inside backend
 Step 4 : put you files in it.
 
 Step 5 : In Terminal cd backend
+
 Step 6 : install the requirements : pip install -r requirements.txt
+
 Step 7 : python scraper.py
+
 Step 8 : python embedding_indexer.py --build
+
 Step 9 : python app.py
