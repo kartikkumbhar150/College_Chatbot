@@ -1,4 +1,3 @@
-// ========== Config ==========
 const apiBase = "/";
 let listening = false;
 const statusEl = document.getElementById("status");
@@ -15,25 +14,21 @@ let awake = false;
 let ttsInterrupted = false;
 let stopRequested = false;
 
-
-// ========== Wake / Stop Detection ==========
 function containsWake(text) {
-  return /\b(hey dit|hello dit|hello)\b/i.test(text);
+  return /\b(hey dit|hello dit|hello|hi|hi dit)\b/i.test(text);
 }
 function containsStop(text) {
   return /\b(stop|okay stop|ok stop|wait|exit)\b/i.test(text);
 }
 
-// ========== Stop Speaking ==========
 function stopSpeaking() {
   window.speechSynthesis.cancel();
   ttsInterrupted = true;
   stopRequested = true;
-  awake = false;
-  statusEl.textContent = "🛑 Stopped. Waiting for 'hello'...";
+  awake = true;
+  statusEl.textContent = "Stopped. Ask me another question...";
 }
 
-// ========== Speech Recognition ==========
 let recognition;
 if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -43,7 +38,7 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
   recognition.lang = langSelect?.value || "en-IN";
 
   recognition.onstart = () => {
-    statusEl.textContent = "🎤 Listening... Say 'hello' to wake.";
+    statusEl.textContent = "Listening. Say hello to wake.";
   };
 
   recognition.onresult = (event) => {
@@ -60,51 +55,66 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
     }
   };
 
-  recognition.onerror = (event) => {
-    console.error("Speech recognition error:", event.error);
-    statusEl.textContent = "❌ Speech recognition error.";
+  recognition.onerror = () => {
+    statusEl.textContent = "Speech recognition error.";
   };
 
   recognition.onend = () => {
     if (listening) recognition.start();
   };
 } else {
-  statusEl.textContent = "❌ Speech Recognition not supported.";
+  statusEl.textContent = "Speech Recognition not supported.";
 }
 
-// Update SR language when user changes it
 if (langSelect) {
   langSelect.addEventListener("change", () => {
-    if (recognition) {
-      recognition.lang = langSelect.value;
-    }
+    if (recognition) recognition.lang = langSelect.value;
   });
 }
 
-// ========== Handle Speech ==========
-function handleFinalSpeech(text) {
+async function translateToEnglish(text, sourceLang = "auto") {
+  try {
+    if (sourceLang && sourceLang.includes("-")) {
+      sourceLang = sourceLang.split("-")[0];
+    }
+    const res = await fetch("https://libretranslate.de/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        q: text,
+        source: sourceLang || "auto",
+        target: "en",
+        format: "text"
+      }),
+    });
+    const data = await res.json();
+    return data.translatedText || text;
+  } catch {
+    return text;
+  }
+}
+
+async function handleFinalSpeech(text) {
   if (containsStop(text)) {
     stopSpeaking();
     return;
   }
-
   if (!awake) {
     if (containsWake(text)) {
       stopRequested = false;
       awake = true;
-      statusEl.textContent = "🟢 Awake — ask your question...";
+      statusEl.textContent = "Awake. Ask your question...";
       appendConversation("Yes, how can I help?", "bot");
       speak("Yes, how can I help?");
     }
   } else {
-    statusEl.textContent = "⚙️ Processing your question...";
+    statusEl.textContent = "Processing...";
     appendConversation(text, "user");
-    handleBotResponse(sendQuery(text));
-    awake = false;
+    const englishText = await translateToEnglish(text, recognition.lang);
+    handleBotResponse(sendQuery(englishText));
   }
 }
 
-// ========== API Query ==========
 async function sendQuery(q) {
   const res = await fetch(apiBase + "api/query", {
     method: "POST",
@@ -124,11 +134,9 @@ async function sendQuery(q) {
   return body;
 }
 
-// ========== Conversation UI ==========
 function appendConversation(text, sender = "bot") {
   const d = document.createElement("div");
   d.classList.add("message", sender);
-
   if (sender === "bot") {
     try {
       const html = DOMPurify.sanitize(marked.parse(text || ""), {
@@ -141,12 +149,10 @@ function appendConversation(text, sender = "bot") {
   } else {
     d.textContent = text;
   }
-
   convEl.appendChild(d);
   convEl.scrollTop = convEl.scrollHeight;
 }
 
-// ========== TTS ==========
 let voices = [];
 window.speechSynthesis.onvoiceschanged = () => {
   voices = window.speechSynthesis.getVoices();
@@ -154,43 +160,33 @@ window.speechSynthesis.onvoiceschanged = () => {
 function speak(text) {
   if (!text) return;
   if (containsStop(text)) return;
-
   let cleanText = text
     .replace(/#+\s*/g, "")
     .replace(/[-*]\s+/g, "")
     .replace(/^\d+\.\s+/gm, "");
-
   window.speechSynthesis.cancel();
   ttsInterrupted = false;
-
   const parts = cleanText.split(/(?<=[.!?])\s+/).filter(Boolean);
-
   const speakNext = () => {
     if (ttsInterrupted || parts.length === 0) return;
-
     const u = new SpeechSynthesisUtterance(parts.shift());
     const prefer = voices.find(
       (v) => /india|en-in|hindi/i.test(v.name) || /en-?in/i.test(v.lang)
     );
     if (prefer) u.voice = prefer;
     u.lang = langSelect?.value || "en-IN";
-
-    u.onstart = () =>
-      (statusEl.textContent = "🔊 Speaking... (still listening)");
+    u.onstart = () => (statusEl.textContent = "Speaking...");
     u.onend = () => {
       if (!window.speechSynthesis.speaking) {
-        statusEl.textContent = "Idle. Still listening...";
+        statusEl.textContent = "Ready for next question...";
       }
       if (!ttsInterrupted) speakNext();
     };
-
     window.speechSynthesis.speak(u);
   };
-
   speakNext();
 }
 
-// ========== Bot Response ==========
 function showTyping() {
   const typing = document.createElement("div");
   typing.classList.add("typing");
@@ -205,44 +201,42 @@ function handleBotResponse(promise) {
     .then((resp) => {
       typing.remove();
       if (stopRequested) {
-        statusEl.textContent = "🛑 Stopped. Waiting for 'hello'...";
+        statusEl.textContent = "Stopped. Waiting for hello...";
         return;
       }
       appendConversation(resp.answer, "bot");
       speak(resp.answer);
-      statusEl.textContent = "Idle. Still listening...";
+      awake = true;
+      statusEl.textContent = "Ready for next question...";
     })
     .catch((err) => {
       typing.remove();
       if (!stopRequested) {
-        console.error(err);
-        statusEl.textContent = "❌ Error contacting backend: " + err.message;
+        statusEl.textContent = "Error contacting backend: " + err.message;
       }
     });
 }
 
-// ========== Listen Toggle ==========
 btn.addEventListener("click", () => {
   listening = !listening;
   if (listening && recognition) {
     recognition.start();
-    btn.textContent = "⏹ Stop Listening";
+    btn.textContent = "Stop Listening";
   } else {
     if (recognition) recognition.stop();
-    btn.textContent = "▶️ Start Listening";
+    btn.textContent = "Start Listening";
     statusEl.textContent = "Stopped.";
   }
 });
 
-// ========== Text Input ==========
-function handleTextSubmit() {
+async function handleTextSubmit() {
   const text = textInput.value.trim();
   if (!text) return;
   textInput.value = "";
-
-  statusEl.textContent = "⚙️ Processing your question...";
+  statusEl.textContent = "Processing...";
   appendConversation(text, "user");
-  handleBotResponse(sendQuery(text));
+  const englishText = await translateToEnglish(text, recognition.lang);
+  handleBotResponse(sendQuery(englishText));
 }
 textInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") handleTextSubmit();
