@@ -15,3 +15,8 @@ pickle5
 Flask
 flask-cors
 groq
+aiohttp
+fuzzywuzzy
+python-Levenshtein
+google
+genai

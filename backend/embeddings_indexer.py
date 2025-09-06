@@ -53,6 +53,7 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "64"))
 
 # ---- Utilities ----
 def read_source_files() -> List[Dict[str, Any]]:
+    """Read all .txt/.md/.html files from data dir (or just college.txt)."""
     if os.path.exists(TEXT_FILE):
         files = [TEXT_FILE]
     else:
@@ -60,7 +61,11 @@ def read_source_files() -> List[Dict[str, Any]]:
         for pattern in ("*.txt", "*.md", "*.html"):
             files.extend(glob.glob(os.path.join(DATA_DIR, pattern)))
     if not files:
-        raise FileNotFoundError(f"No files found in {DATA_DIR}. Place college.txt or other files there.")
+        raise FileNotFoundError(
+            f"No source files found in {DATA_DIR}. "
+            f"Please place `college.txt` or other text/HTML files there."
+        )
+
     result = []
     for fp in sorted(files):
         with open(fp, "r", encoding="utf-8", errors="ignore") as f:
@@ -69,6 +74,7 @@ def read_source_files() -> List[Dict[str, Any]]:
 
 
 def preprocess(text: str) -> str:
+    """Basic cleanup and paragraph normalization."""
     text = text.replace('\r\n', '\n').replace('\r', '\n')
     text = re.sub(r'\n{3,}', '\n\n', text)
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
@@ -76,15 +82,21 @@ def preprocess(text: str) -> str:
 
 
 def is_heading(paragraph: str) -> bool:
+    """Heuristic: treat as heading if short, uppercase, or ends with ':'."""
     p = paragraph.strip()
-    if len(p) < 120 and (p.endswith(":") or p.isupper() or re.match(r'^[\d\.\sA-Z\-]{1,60}$', p)):
+    if len(p) < 120 and (
+        p.endswith(":") or p.isupper() or re.match(r'^[\d\.\sA-Z\-]{1,60}$', p)
+    ):
         return True
     return False
 
 
-def chunk_text_with_sections(text: str,
-                             chunk_size: int = CHUNK_SIZE,
-                             overlap: int = CHUNK_OVERLAP) -> List[Dict[str, Any]]:
+def chunk_text_with_sections(
+    text: str,
+    chunk_size: int = CHUNK_SIZE,
+    overlap: int = CHUNK_OVERLAP
+) -> List[Dict[str, Any]]:
+    """Chunk text into overlapping windows, keeping track of section headings."""
     paragraphs = text.split("\n\n")
     chunks, cur_words, cur_len, last_heading = [], [], 0, None
 
@@ -115,6 +127,7 @@ def chunk_text_with_sections(text: str,
         if len(chunk_text.split()) >= MIN_CHUNK_WORDS:
             chunks.append({"text": chunk_text, "section": last_heading})
 
+    # Deduplicate by text hash
     seen, unique_chunks = set(), []
     for c in chunks:
         h = hashlib.sha1(c["text"].strip().encode("utf-8")).hexdigest()
@@ -125,40 +138,46 @@ def chunk_text_with_sections(text: str,
 
 
 # ---- Index build / load / search ----
-def build_index(embedding_model_name: str = EMBED_MODEL_NAME,
-                use_qa_model: bool = False):
-    print("Reading source files...")
+def build_index(
+    embedding_model_name: str = EMBED_MODEL_NAME,
+    use_qa_model: bool = False
+):
+    print("📖 Reading source files...")
     sources = read_source_files()
 
-    print("Preprocessing and chunking...")
+    print("✂️ Preprocessing + chunking...")
     all_chunks = []
     for s in sources:
         text = preprocess(s["text"])
         for ch in chunk_text_with_sections(text, CHUNK_SIZE, CHUNK_OVERLAP):
-            all_chunks.append({"source": s["source"], "section": ch.get("section"), "text": ch["text"]})
+            all_chunks.append(
+                {"source": s["source"], "section": ch.get("section"), "text": ch["text"]}
+            )
     if not all_chunks:
         raise RuntimeError("No chunks produced. Check your data and chunking settings.")
 
-    print(f"Total chunks: {len(all_chunks)}")
+    print(f"✅ Total chunks: {len(all_chunks)}")
 
     model_name = QA_EMBED_MODEL_NAME if use_qa_model else embedding_model_name
-    print(f"Loading embedding model: {model_name}")
+    print(f"🔄 Loading embedding model: {model_name}")
     embedder = SentenceTransformer(model_name)
-    print(f"Embedding dim: {embedder.get_sentence_embedding_dimension()}")
+    print(f"📐 Embedding dim: {embedder.get_sentence_embedding_dimension()}")
 
     embeddings = []
     texts = [c["text"] for c in all_chunks]
     for i in tqdm(range(0, len(texts), BATCH_SIZE), desc="Encoding"):
-        embs = embedder.encode(texts[i:i+BATCH_SIZE],
-                               show_progress_bar=False,
-                               convert_to_numpy=True,
-                               batch_size=BATCH_SIZE)
+        embs = embedder.encode(
+            texts[i:i + BATCH_SIZE],
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            batch_size=BATCH_SIZE
+        )
         embeddings.append(embs)
     arr = np.vstack(embeddings).astype("float32")
     faiss.normalize_L2(arr)
 
     dim = arr.shape[1]
-    print(f"Creating FAISS index (dim={dim}, M={HNSW_M})")
+    print(f"⚡ Creating HNSW FAISS index (dim={dim}, M={HNSW_M})")
     index = faiss.IndexHNSWFlat(dim, HNSW_M, faiss.METRIC_INNER_PRODUCT)
     index.hnsw.efConstruction = EF_CONSTRUCTION
     index.hnsw.efSearch = EF_SEARCH
@@ -167,23 +186,25 @@ def build_index(embedding_model_name: str = EMBED_MODEL_NAME,
     ids = np.arange(len(all_chunks)).astype("int64")
     index_id_map.add_with_ids(arr, ids)
 
-    print("Saving index + metadata...")
+    print("💾 Saving index + metadata...")
     faiss.write_index(index_id_map, FAISS_INDEX_FILE)
     with open(FAISS_META_FILE, "wb") as f:
         pickle.dump(all_chunks, f)
     with open(CHUNKS_FILE, "w", encoding="utf-8") as f:
         json.dump(all_chunks, f, ensure_ascii=False, indent=2)
 
-    print("Index build complete.")
+    print("🎉 Index build complete.")
 
 
-def load_index_and_meta(embed_model_name: str = EMBED_MODEL_NAME,
-                        index_path: str = FAISS_INDEX_FILE,
-                        meta_path: str = FAISS_META_FILE):
+def load_index_and_meta(
+    embed_model_name: str = EMBED_MODEL_NAME,
+    index_path: str = FAISS_INDEX_FILE,
+    meta_path: str = FAISS_META_FILE
+):
     if not os.path.exists(index_path) or not os.path.exists(meta_path):
         raise FileNotFoundError("Index or metadata not found. Run with --build first.")
 
-    print("Loading FAISS index + metadata...")
+    print("📂 Loading FAISS index + metadata...")
     index = faiss.read_index(index_path)
     with open(meta_path, "rb") as f:
         meta = pickle.load(f)
@@ -191,40 +212,53 @@ def load_index_and_meta(embed_model_name: str = EMBED_MODEL_NAME,
     embedder = SentenceTransformer(embed_model_name)
     model_dim = embedder.get_sentence_embedding_dimension()
     index_dim = index.d
-    print(f"Model dim={model_dim}, Index dim={index_dim}")
+    print(f"ℹ️ Model dim={model_dim}, Index dim={index_dim}")
 
     if model_dim != index_dim:
         raise ValueError(
-            f"Dimension mismatch! Model={model_dim}, Index={index_dim}. "
+            f"❌ Dimension mismatch! Model={model_dim}, Index={index_dim}. "
             f"Rebuild the index with this model."
         )
 
     return index, meta, embedder
 
 
-def search(query: str,
-           top_k: int = 5,
-           rerank: bool = True,
-           embed_model_name: str = EMBED_MODEL_NAME,
-           cross_encoder_model: Optional[str] = CROSS_ENCODER_MODEL):
+_cross_encoder = None
+def get_cross_encoder(model_name: str = CROSS_ENCODER_MODEL):
+    global _cross_encoder
+    if _cross_encoder is None:
+        print(f"🔄 Loading cross encoder: {model_name}")
+        _cross_encoder = CrossEncoder(model_name)
+    return _cross_encoder
+
+
+def search(
+    query: str,
+    top_k: int = 5,
+    rerank: bool = True,
+    embed_model_name: str = EMBED_MODEL_NAME,
+    cross_encoder_model: Optional[str] = CROSS_ENCODER_MODEL
+):
     index, meta, embedder = load_index_and_meta(embed_model_name)
     qv = embedder.encode(query, convert_to_numpy=True).astype("float32")
     faiss.normalize_L2(qv)
 
     D, I = index.search(np.array([qv]), top_k)
-    candidates = [{"id": int(idx), "score": float(sc), "meta": meta[int(idx)]}
-                  for idx, sc in zip(I[0], D[0]) if idx != -1]
+    candidates = [
+        {"id": int(idx), "score": float(sc), "meta": meta[int(idx)]}
+        for idx, sc in zip(I[0], D[0]) if idx != -1
+    ]
 
     if rerank and cross_encoder_model:
         try:
-            cross = CrossEncoder(cross_encoder_model)
+            cross = get_cross_encoder(cross_encoder_model)
             pairs = [[query, c["meta"]["text"]] for c in candidates]
             rerank_scores = cross.predict(pairs)
             for c, new_sc in zip(candidates, rerank_scores):
                 c["rerank_score"] = float(new_sc)
             candidates = sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)
         except Exception as e:
-            print(f"Cross-encoder rerank failed: {e}")
+            print(f"⚠️ Cross-encoder rerank failed: {e}")
 
     return candidates
 
@@ -242,13 +276,16 @@ def main():
     if args.build:
         build_index(use_qa_model=args.use_qa_model)
         return
+
     if args.search:
         results = search(args.search, top_k=args.top_k, rerank=(not args.no_rerank))
         for i, r in enumerate(results, 1):
             meta = r["meta"]
-            print(f"\nResult {i}: score={r.get('rerank_score', r['score']):.4f} source={meta.get('source')}")
+            score = r.get("rerank_score", r["score"])
+            print(f"\nResult {i}: score={score:.4f} source={meta.get('source')}")
             print(meta.get("text", "")[:300], "...")
         return
+
     parser.print_help()
 
 
