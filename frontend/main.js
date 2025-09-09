@@ -14,6 +14,7 @@ let ttsInterrupted = false;
 let stopRequested = false;
 let lastUserLang = "en"; // default language
 let liveBubble = null;   // interim transcript bubble
+const MAX_MESSAGES = 200; // trim conversation for performance
 
 // ----------- Keyword Detection -----------
 function containsWake(text) {
@@ -64,7 +65,6 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
         finalTranscript = event.results[i][0].transcript.trim();
 
         if (liveBubble) {
-          // finalize bubble
           liveBubble.textContent = finalTranscript;
           liveBubble.classList.remove("live");
           liveBubble = null;
@@ -75,8 +75,6 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
         handleFinalSpeech(finalTranscript.toLowerCase());
       } else {
         interim += event.results[i][0].transcript;
-
-        // update or create interim bubble
         if (!liveBubble) {
           liveBubble = document.createElement("div");
           liveBubble.classList.add("message", "user", "live");
@@ -95,7 +93,9 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
   };
 
   recognition.onend = () => {
-    if (listening) recognition.start();
+    if (listening) {
+      setTimeout(() => recognition.start(), 1000); // retry with delay
+    }
   };
 } else {
   statusEl.textContent = "Speech Recognition not supported.";
@@ -124,7 +124,7 @@ async function translateText(text, sourceLang, targetLang) {
     const data = await res.json();
     return data.translatedText || text;
   } catch {
-    return text;
+    return text; // fallback
   }
 }
 
@@ -156,20 +156,14 @@ async function handleFinalSpeech(text) {
     }
   } else {
     statusEl.textContent = "Processing...";
-
-    // detect spoken language from recognition
-    let spokenLang = recognition.lang || "en";
+    let spokenLang = recognition.lang || langSelect.value || "en";
     if (spokenLang.includes("-")) spokenLang = spokenLang.split("-")[0];
     lastUserLang = spokenLang;
-
-    // append user message only once here
-    //appendConversation(text, "user");
 
     const englishText = await translateToEnglish(text, spokenLang);
     handleBotResponse(sendQuery(englishText));
   }
 }
-
 
 // ----------- Backend Query -----------
 async function sendQuery(q) {
@@ -209,12 +203,19 @@ function appendConversation(text, sender = "bot") {
   }
   convEl.appendChild(d);
   convEl.scrollTop = convEl.scrollHeight;
+
+  // trim messages
+  if (convEl.children.length > MAX_MESSAGES) {
+    convEl.removeChild(convEl.firstChild);
+  }
 }
 
 // ----------- Speech Synthesis -----------
 let voices = [];
 window.speechSynthesis.onvoiceschanged = () => {
-  voices = window.speechSynthesis.getVoices();
+  try {
+    voices = window.speechSynthesis.getVoices();
+  } catch { voices = []; }
 };
 
 function speak(text, lang = "en") {
@@ -235,7 +236,6 @@ function speak(text, lang = "en") {
     if (ttsInterrupted || parts.length === 0) return;
     const u = new SpeechSynthesisUtterance(parts.shift());
 
-    // pick best available voice
     const prefer = voices.find(v => v.lang.toLowerCase().startsWith(lang));
     if (prefer) u.voice = prefer;
 
@@ -275,15 +275,12 @@ function handleBotResponse(promise) {
         return;
       }
 
-      let reply = resp.answer;
+      let reply = resp.answer || "I couldn’t understand that.";
 
-      // translate reply if needed
       if (lastUserLang !== "en") {
         try {
           reply = await translateText(reply, "en", lastUserLang);
-        } catch {
-          // fallback to English
-        }
+        } catch { /* fallback */ }
       }
 
       appendConversation(reply, "bot");
@@ -318,11 +315,9 @@ async function handleTextSubmit() {
   if (!text) return;
   textInput.value = "";
   statusEl.textContent = "Processing...";
-
-  // append user message only once here
   appendConversation(text, "user");
 
-  const englishText = await translateToEnglish(text, recognition.lang);
+  const englishText = await translateToEnglish(text, recognition?.lang || langSelect.value);
   handleBotResponse(sendQuery(englishText));
 }
 textInput.addEventListener("keydown", (e) => {
