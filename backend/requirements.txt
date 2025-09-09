@@ -18,5 +18,4 @@ groq
 aiohttp
 fuzzywuzzy
 python-Levenshtein
-google
-genai
+
