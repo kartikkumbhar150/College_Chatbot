@@ -16,7 +16,6 @@ let lastUserLang = "en"; // default language
 let liveBubble = null;   // interim transcript bubble
 
 // ----------- Keyword Detection -----------
-// ----------- Keyword Detection -----------
 function containsWake(text) {
   return /\b(hey dit|hello dit|hello|hi|hi dit)\b/i.test(text);
 }
@@ -25,13 +24,8 @@ function containsStop(text) {
 }
 function containsFullStop(text) {
   return /\b(stop listening|exit)\b/i.test(text);
-  return /\b(stop|okay stop|ok stop|wait)\b/i.test(text);
-}
-function containsFullStop(text) {
-  return /\b(stop listening|exit)\b/i.test(text);
 }
 
-// ----------- Control Functions -----------
 // ----------- Control Functions -----------
 function stopSpeaking() {
   window.speechSynthesis.cancel();
@@ -46,22 +40,10 @@ function stopAll() {
   window.speechSynthesis.cancel();
   listening = false;
   awake = false;
-  awake = true;
-  statusEl.textContent = "Stopped speaking. Ask me a new question...";
-  if (listening && recognition) recognition.start();
-}
-
-function stopAll() {
-  if (recognition) recognition.stop();
-  window.speechSynthesis.cancel();
-  listening = false;
-  awake = false;
   stopRequested = true;
   statusEl.textContent = "Stopped completely. Say 'hello' to wake again.";
-  statusEl.textContent = "Stopped completely. Say 'hello' to wake again.";
 }
 
-// ----------- Speech Recognition Setup -----------
 // ----------- Speech Recognition Setup -----------
 let recognition;
 if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
@@ -72,7 +54,6 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
   recognition.lang = langSelect?.value || "en-IN";
 
   recognition.onstart = () => {
-    statusEl.textContent = "Listening... Say hello to wake.";
     statusEl.textContent = "Listening... Say hello to wake.";
   };
 
@@ -121,7 +102,6 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
 }
 
 // ----------- Language Dropdown -----------
-// ----------- Language Dropdown -----------
 if (langSelect) {
   langSelect.addEventListener("change", () => {
     if (recognition) recognition.lang = langSelect.value;
@@ -130,16 +110,12 @@ if (langSelect) {
 
 // ----------- Translation Helpers -----------
 async function translateText(text, sourceLang, targetLang) {
-// ----------- Translation Helpers -----------
-async function translateText(text, sourceLang, targetLang) {
   try {
     const res = await fetch("https://libretranslate.de/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         q: text,
-        source: sourceLang,
-        target: targetLang,
         source: sourceLang,
         target: targetLang,
         format: "text"
@@ -166,10 +142,6 @@ async function handleFinalSpeech(text) {
     stopAll();
     return;
   }
-  if (containsFullStop(text)) {
-    stopAll();
-    return;
-  }
   if (containsStop(text)) {
     stopSpeaking();
     return;
@@ -180,7 +152,6 @@ async function handleFinalSpeech(text) {
       awake = true;
       statusEl.textContent = "Awake. Ask your question...";
       appendConversation("Yes, how can I help?", "bot");
-      speak("Yes, how can I help?", "en");
       speak("Yes, how can I help?", "en");
     }
   } else {
@@ -221,7 +192,6 @@ async function sendQuery(q) {
 }
 
 // ----------- Conversation UI -----------
-// ----------- Conversation UI -----------
 function appendConversation(text, sender = "bot") {
   const d = document.createElement("div");
   d.classList.add("message", sender);
@@ -242,18 +212,13 @@ function appendConversation(text, sender = "bot") {
 }
 
 // ----------- Speech Synthesis -----------
-// ----------- Speech Synthesis -----------
 let voices = [];
 window.speechSynthesis.onvoiceschanged = () => {
   voices = window.speechSynthesis.getVoices();
 };
 
 function speak(text, lang = "en") {
-
-function speak(text, lang = "en") {
   if (!text) return;
-  if (containsStop(text) || containsFullStop(text)) return;
-
   if (containsStop(text) || containsFullStop(text)) return;
 
   let cleanText = text
@@ -261,13 +226,10 @@ function speak(text, lang = "en") {
     .replace(/[-*]\s+/g, "")
     .replace(/^\d+\.\s+/gm, "");
 
-
   window.speechSynthesis.cancel();
   ttsInterrupted = false;
 
-
   const parts = cleanText.split(/(?<=[.!?])\s+/).filter(Boolean);
-
 
   const speakNext = () => {
     if (ttsInterrupted || parts.length === 0) return;
@@ -276,11 +238,6 @@ function speak(text, lang = "en") {
     // pick best available voice
     const prefer = voices.find(v => v.lang.toLowerCase().startsWith(lang));
     if (prefer) u.voice = prefer;
-
-    if (lang === "hi") u.lang = "hi-IN";
-    else if (lang === "mr") u.lang = "mr-IN";
-    else u.lang = "en-IN";
-
 
     if (lang === "hi") u.lang = "hi-IN";
     else if (lang === "mr") u.lang = "mr-IN";
@@ -299,7 +256,6 @@ function speak(text, lang = "en") {
 }
 
 // ----------- Bot Response Handler -----------
-// ----------- Bot Response Handler -----------
 function showTyping() {
   const typing = document.createElement("div");
   typing.classList.add("typing");
@@ -309,11 +265,9 @@ function showTyping() {
   return typing;
 }
 
-
 function handleBotResponse(promise) {
   const typing = showTyping();
   promise
-    .then(async (resp) => {
     .then(async (resp) => {
       typing.remove();
       if (stopRequested) {
@@ -346,7 +300,6 @@ function handleBotResponse(promise) {
 }
 
 // ----------- Manual Toggle Button -----------
-// ----------- Manual Toggle Button -----------
 btn.addEventListener("click", () => {
   listening = !listening;
   if (listening && recognition) {
@@ -360,7 +313,6 @@ btn.addEventListener("click", () => {
 });
 
 // ----------- Text Input Handler -----------
-// ----------- Text Input Handler -----------
 async function handleTextSubmit() {
   const text = textInput.value.trim();
   if (!text) return;
@@ -370,7 +322,6 @@ async function handleTextSubmit() {
   // append user message only once here
   appendConversation(text, "user");
 
-
   const englishText = await translateToEnglish(text, recognition.lang);
   handleBotResponse(sendQuery(englishText));
 }
@@ -378,15 +329,6 @@ textInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") handleTextSubmit();
 });
 sendBtn.addEventListener("click", handleTextSubmit);
-
-// ----------- Auto Start Listening -----------
-window.addEventListener("load", () => {
-  if (recognition) {
-    listening = true;
-    recognition.start();
-    statusEl.textContent = "Listening... Say hello to wake.";
-  }
-});
 
 // ----------- Auto Start Listening -----------
 window.addEventListener("load", () => {
