@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # ============ Load FAISS ============
 try:
     faiss_index, metadata, embed_model = load_index_and_meta()
-    print(f"✅ FAISS index loaded with {len(metadata)} entries")
+    print(f"FAISS index loaded with {len(metadata)} entries")
 except Exception as e:
     raise RuntimeError(f"Failed to load FAISS index: {e}")
 
@@ -78,14 +78,14 @@ CUTOFF_INDEX_FILE = DATA_DIR / "cutoff_index.faiss"
 CUTOFF_DOCS_FILE = DATA_DIR / "cutoff_documents.json"
 
 if not CUTOFF_INDEX_FILE.exists() or not CUTOFF_DOCS_FILE.exists():
-    print("⚠️ Cutoff FAISS index not found, skipping cutoff search")
+    print("Cutoff FAISS index not found, skipping cutoff search")
     cutoff_index = None
     cutoff_documents = []
 else:
     cutoff_index = faiss.read_index(str(CUTOFF_INDEX_FILE))
     with open(CUTOFF_DOCS_FILE, "r", encoding="utf-8") as f:
         cutoff_documents = json.load(f)
-    print(f"✅ Cutoff FAISS index loaded with {len(cutoff_documents)} entries")
+    print(f"Cutoff FAISS index loaded with {len(cutoff_documents)} entries")
 
 def search_cutoff_embeddings(query: str, top_k: int = 10, threshold: float = 0.3):
     """Search cutoff FAISS index and return all categories for the most relevant branch.
@@ -305,5 +305,5 @@ if __name__ == "__main__":
     host = os.getenv("FLASK_HOST", "0.0.0.0")
     port = int(os.getenv("FLASK_PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    print(f"🚀 Running Flask server on http://{host}:{port}")
+    print(f"Running Flask server on http://{host}:{port}")
     app.run(host=host, port=port, debug=debug)

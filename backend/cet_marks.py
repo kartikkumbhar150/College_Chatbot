@@ -34,7 +34,7 @@ dimension = embeddings.shape[1]
 index = faiss.IndexFlatIP(dimension)
 index.add(embeddings)
 
-print(f"✅ FAISS index created with {index.ntotal} embeddings")
+print(f"FAISS index created with {index.ntotal} embeddings")
 
 # Save index + docs
 faiss.write_index(index, "data/cutoff_index.faiss")
@@ -58,6 +58,6 @@ faiss.normalize_L2(query_embedding)
 k = 3
 scores, indices = index_loaded.search(query_embedding, k)
 
-print("\n🔎 Query:", query)
+print("\nQuery:", query)
 for i, idx in enumerate(indices[0]):
     print(f"{i+1}. {documents_loaded[idx]} (score={scores[0][i]:.4f})")

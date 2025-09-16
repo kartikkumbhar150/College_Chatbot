@@ -31,7 +31,7 @@ def build_json_index():
     with open(META_PATH, "wb") as f:
         pickle.dump({"questions": questions, "answers": answers}, f)
 
-    print("✅ JSON FAISS index built successfully")
+    print("JSON FAISS index built successfully")
 
 if __name__ == "__main__":
     build_json_index()
