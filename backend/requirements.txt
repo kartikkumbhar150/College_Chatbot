@@ -11,7 +11,6 @@ scikit-learn
 torch
 transformers
 python-dotenv
-pickle5
 Flask
 flask-cors
 groq
