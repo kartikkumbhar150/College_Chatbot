@@ -21,7 +21,7 @@ function containsWake(text) {
   return /\b(hey dit|hello dit|hello|hi|hi dit)\b/i.test(text);
 }
 function containsStop(text) {
-  return /\b(stop|okay stop|ok stop|wait)\b/i.test(text);
+  return /\b(stop|okay stop|ok stop|wait|wail)\b/i.test(text);
 }
 function containsFullStop(text) {
   return /\b(stop listening|exit)\b/i.test(text);
@@ -33,7 +33,11 @@ function stopSpeaking() {
   ttsInterrupted = true;
   awake = true;
   statusEl.textContent = "Stopped speaking. Ask me a new question...";
-  if (listening && recognition) recognition.start();
+
+  // 🔑 Restart recognition after interrupt
+  if (recognition && listening) {
+    try { recognition.start(); } catch {}
+  }
 }
 
 function stopAll() {
@@ -61,8 +65,20 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
   recognition.onresult = (event) => {
     let interim = "";
     for (let i = event.resultIndex; i < event.results.length; ++i) {
+      const transcript = event.results[i][0].transcript.trim().toLowerCase();
+
+      // 🚨 Immediate stop detection
+      if (containsStop(transcript)) {
+        stopSpeaking();
+        return;
+      }
+      if (containsFullStop(transcript)) {
+        stopAll();
+        return;
+      }
+
       if (event.results[i].isFinal) {
-        finalTranscript = event.results[i][0].transcript.trim();
+        finalTranscript = transcript;
 
         if (liveBubble) {
           liveBubble.textContent = finalTranscript;
@@ -72,9 +88,17 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
           appendConversation(finalTranscript, "user");
         }
 
-        handleFinalSpeech(finalTranscript.toLowerCase());
+        // cancel old speech before handling new input
+        stopSpeaking();
+        handleFinalSpeech(finalTranscript);
       } else {
-        interim += event.results[i][0].transcript;
+        interim += transcript;
+
+        // 🚨 If user starts talking while bot is speaking → cut speech
+        if (!ttsInterrupted && transcript.length > 2) {
+          stopSpeaking();
+        }
+
         if (!liveBubble) {
           liveBubble = document.createElement("div");
           liveBubble.classList.add("message", "user", "live");
@@ -94,7 +118,9 @@ if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
 
   recognition.onend = () => {
     if (listening) {
-      setTimeout(() => recognition.start(), 1000); // retry with delay
+      setTimeout(() => {
+        try { recognition.start(); } catch {}
+      }, 300);
     }
   };
 } else {
@@ -227,31 +253,43 @@ function speak(text, lang = "en") {
     .replace(/[-*]\s+/g, "")
     .replace(/^\d+\.\s+/gm, "");
 
-  window.speechSynthesis.cancel();
   ttsInterrupted = false;
-
   const parts = cleanText.split(/(?<=[.!?])\s+/).filter(Boolean);
 
   const speakNext = () => {
-    if (ttsInterrupted || parts.length === 0) return;
-    const u = new SpeechSynthesisUtterance(parts.shift());
+    if (ttsInterrupted || parts.length === 0) {
+      if (recognition && listening) {
+        try { recognition.start(); } catch {}
+      }
+      return;
+    }
 
+    const u = new SpeechSynthesisUtterance(parts.shift());
     const prefer = voices.find(v => v.lang.toLowerCase().startsWith(lang));
     if (prefer) u.voice = prefer;
 
-    if (lang === "hi") u.lang = "hi-IN";
-    else if (lang === "mr") u.lang = "mr-IN";
-    else u.lang = "en-IN";
+    u.lang = (lang === "hi") ? "hi-IN" : (lang === "mr") ? "mr-IN" : "en-IN";
 
-    u.onstart = () => (statusEl.textContent = "Speaking...");
+    u.onstart = () => {
+      statusEl.textContent = "Speaking...";
+      if (recognition && listening) {
+        try { recognition.start(); } catch {}
+      }
+    };
+
     u.onend = () => {
       if (!window.speechSynthesis.speaking) {
         statusEl.textContent = "Ready for next question...";
+        if (recognition && listening) {
+          try { recognition.start(); } catch {}
+        }
       }
       if (!ttsInterrupted) speakNext();
     };
+
     window.speechSynthesis.speak(u);
   };
+
   speakNext();
 }
 
@@ -316,6 +354,8 @@ async function handleTextSubmit() {
   textInput.value = "";
   statusEl.textContent = "Processing...";
   appendConversation(text, "user");
+
+  stopSpeaking(); // cancel old speech if new query
 
   const englishText = await translateToEnglish(text, recognition?.lang || langSelect.value);
   handleBotResponse(sendQuery(englishText));
