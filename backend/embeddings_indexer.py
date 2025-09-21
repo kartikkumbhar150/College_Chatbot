@@ -27,18 +27,9 @@ FAISS_INDEX_FILE = os.path.join(DATA_DIR, "faiss_index.bin")
 FAISS_META_FILE = os.path.join(DATA_DIR, "faiss_meta.pkl")
 
 # ---- Models & hyperparams ----
-EMBED_MODEL_NAME = os.getenv(
-    "EMBEDDING_MODEL",
-    "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-)
-QA_EMBED_MODEL_NAME = os.getenv(
-    "QA_EMBEDDING_MODEL",
-    "sentence-transformers/multi-qa-mpnet-base-dot-v1"
-)
-CROSS_ENCODER_MODEL = os.getenv(
-    "CROSS_ENCODER_MODEL",
-    "cross-encoder/ms-marco-MiniLM-L-6-v2"
-)
+EMBED_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2")
+QA_EMBED_MODEL_NAME = os.getenv("QA_EMBEDDING_MODEL", "intfloat/e5-base-v2")
+CROSS_ENCODER_MODEL = os.getenv("CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-12-v2")
 
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "300"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "30"))
@@ -50,63 +41,52 @@ EF_SEARCH = int(os.getenv("EF_SEARCH", "50"))
 
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "64"))
 
+# =====================================================
+#               STREAMING HELPERS
+# =====================================================
 
-# ---- Utilities ----
-def read_source_files() -> List[Dict[str, Any]]:
-    """Read all .txt/.md/.html files from data dir (or just college.txt)."""
-    if os.path.exists(TEXT_FILE):
-        files = [TEXT_FILE]
-    else:
-        files = []
-        for pattern in ("*.txt", "*.md", "*.html"):
-            files.extend(glob.glob(os.path.join(DATA_DIR, pattern)))
-    if not files:
-        raise FileNotFoundError(
-            f"No source files found in {DATA_DIR}. "
-            f"Please place `college.txt` or other text/HTML files there."
-        )
-
-    result = []
-    for fp in sorted(files):
-        with open(fp, "r", encoding="utf-8", errors="ignore") as f:
-            result.append({"source": os.path.basename(fp), "text": f.read()})
-    return result
+def is_heading(text: str) -> bool:
+    """Detect if a line looks like a heading (heuristic)."""
+    t = text.strip()
+    return (
+        (len(t) < 120 and (t.endswith(":") or t.isupper())) or
+        re.match(r'^[\d\.\sA-Z\-]{1,60}$', t) is not None
+    )
 
 
-def preprocess(text: str) -> str:
-    """Basic cleanup and paragraph normalization."""
-    text = text.replace('\r\n', '\n').replace('\r', '\n')
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-    return "\n\n".join(paragraphs)
+def stream_file_paragraphs(fp: str):
+    """Yield paragraphs from file without loading entire file."""
+    buf = []
+    with open(fp, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                if buf:
+                    para = " ".join(buf).strip()
+                    if para:
+                        yield para
+                    buf = []
+            else:
+                buf.append(line)
+        if buf:
+            para = " ".join(buf).strip()
+            if para:
+                yield para
 
 
-def is_heading(paragraph: str) -> bool:
-    """Heuristic: treat as heading if short, uppercase, or ends with ':'."""
-    p = paragraph.strip()
-    if len(p) < 120 and (
-        p.endswith(":") or p.isupper() or re.match(r'^[\d\.\sA-Z\-]{1,60}$', p)
-    ):
-        return True
-    return False
-
-
-def chunk_text_with_sections(
-    text: str,
+def stream_chunks_from_file(
+    fp: str,
     chunk_size: int = CHUNK_SIZE,
     overlap: int = CHUNK_OVERLAP
 ) -> List[Dict[str, Any]]:
-    """Chunk text into overlapping windows, keeping track of section headings."""
-    paragraphs = text.split("\n\n")
+    """Read file → paragraphs → chunks directly."""
     chunks, cur_words, cur_len, last_heading = [], [], 0, None
 
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
-            continue
+    for para in stream_file_paragraphs(fp):
         if is_heading(para):
             last_heading = para
             continue
+
         sentences = re.split(r'(?<=[.!?])\s+', para)
         for sent in sentences:
             words = sent.split()
@@ -127,37 +107,45 @@ def chunk_text_with_sections(
         if len(chunk_text.split()) >= MIN_CHUNK_WORDS:
             chunks.append({"text": chunk_text, "section": last_heading})
 
-    # Deduplicate by text hash
-    seen, unique_chunks = set(), []
+    # Deduplicate
+    seen, uniq = set(), []
     for c in chunks:
         h = hashlib.sha1(c["text"].strip().encode("utf-8")).hexdigest()
         if h not in seen:
             seen.add(h)
-            unique_chunks.append(c)
-    return unique_chunks
+            uniq.append(c)
+    return uniq
 
+# =====================================================
+#               INDEX BUILD / LOAD / SEARCH
+# =====================================================
 
-# ---- Index build / load / search ----
 def build_index(
     embedding_model_name: str = EMBED_MODEL_NAME,
     use_qa_model: bool = False
 ):
-    print("Reading source files...")
-    sources = read_source_files()
+    print("Reading + chunking files...")
+    if os.path.exists(TEXT_FILE):
+        files = [TEXT_FILE]
+    else:
+        files = []
+        for pattern in ("*.txt", "*.md", "*.html"):
+            files.extend(glob.glob(os.path.join(DATA_DIR, pattern)))
+    if not files:
+        raise FileNotFoundError(f"No source files found in {DATA_DIR}")
 
-    print("Preprocessing + chunking...")
     all_chunks = []
-    for s in sources:
-        text = preprocess(s["text"])
-        for ch in chunk_text_with_sections(text, CHUNK_SIZE, CHUNK_OVERLAP):
-            all_chunks.append(
-                {"source": s["source"], "section": ch.get("section"), "text": ch["text"]}
-            )
+    for fp in sorted(files):
+        file_chunks = stream_chunks_from_file(fp)
+        for ch in file_chunks:
+            all_chunks.append({"source": os.path.basename(fp), **ch})
+
     if not all_chunks:
-        raise RuntimeError("No chunks produced. Check your data and chunking settings.")
+        raise RuntimeError("No chunks produced. Check your input files.")
 
     print(f"Total chunks: {len(all_chunks)}")
 
+    # ---- Embeddings ----
     model_name = QA_EMBED_MODEL_NAME if use_qa_model else embedding_model_name
     print(f"Loading embedding model: {model_name}")
     embedder = SentenceTransformer(model_name)
@@ -212,7 +200,7 @@ def load_index_and_meta(
     embedder = SentenceTransformer(embed_model_name)
     model_dim = embedder.get_sentence_embedding_dimension()
     index_dim = index.d
-    print(f"ℹModel dim={model_dim}, Index dim={index_dim}")
+    print(f"ℹ Model dim={model_dim}, Index dim={index_dim}")
 
     if model_dim != index_dim:
         raise ValueError(
@@ -263,7 +251,10 @@ def search(
     return candidates
 
 
-# ---- CLI ----
+# =====================================================
+#                   CLI
+# =====================================================
+
 def main():
     parser = argparse.ArgumentParser(description="FAISS chatbot indexer + search")
     parser.add_argument("--build", action="store_true", help="Build embeddings + FAISS index")

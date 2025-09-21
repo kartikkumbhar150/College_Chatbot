@@ -239,7 +239,7 @@ def api_query():
         return jsonify({"answer": "History cleared.", "retrieved": [], "history": []})
 
     # Step 0: Admission/Cutoff priority search
-    admission_keywords = {"admission", "cutoff", "rank", "cet", "marks"}
+    admission_keywords = {"cutoff", "cut off" , "rank", "cet", "marks"}
     if any(word in q_lower for word in admission_keywords):
         cutoff_answer = search_cutoff_embeddings(q)  # Markdown string
         if cutoff_answer:

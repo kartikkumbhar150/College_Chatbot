@@ -14,7 +14,7 @@ if not GROQ_API_KEY:
 async def groq_generate_async(system_prompt: str, user_prompt: str,
                               max_tokens: int = 512, temperature: float = 0.0) -> str:
     """Async Groq call."""
-    url = "https://api.groq.com/openai/v1/chat/completions"   # ✅ correct endpoint
+    url = "https://api.groq.com/openai/v1/chat/completions"   #  correct endpoint
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
